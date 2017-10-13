@@ -25,6 +25,7 @@ import android.content.Intent;
 import android.hardware.radio.V1_0.AppStatus;
 import android.hardware.radio.V1_0.Call;
 import android.hardware.radio.V1_0.CardStatus;
+import android.hardware.radio.V1_0.CarrierMatchType;
 import android.hardware.radio.V1_0.CdmaSignalInfoRecord;
 import android.hardware.radio.V1_0.CellIdentityGsm;
 import android.hardware.radio.V1_0.CellIdentityLte;
@@ -40,6 +41,7 @@ import android.hardware.radio.V1_0.SendSmsResult;
 import android.hardware.radio.V1_0.SignalStrength;
 import android.hardware.radio.V1_0.VoiceRegStateResult;
 import android.os.RemoteException;
+import android.service.carrier.CarrierIdentifier;
 import android.telephony.Rlog;
 
 import android.hardware.radio.V1_0.CallForwardInfo;
@@ -1381,6 +1383,54 @@ public class RildService extends BroadcastReceiver {
         radioResponse.iccOpenLogicalChannelResponse(responseInfo, channelId, selectResponse);
     }
 
+    private void handleGetAllowedCarriersResponse(IRadioResponse radioResponse, RadioResponseInfo responseInfo, Parcel p) throws RemoteException {
+
+        CarrierRestrictions carrierInfo = new CarrierRestrictions();
+        boolean allAllowed = true;
+
+
+        if (responseInfo.error == RILConstants.SUCCESS) {
+
+            int len_allowed_carriers = p.readInt();
+            int len_excluded_carriers = p.readInt();
+
+            if (len_allowed_carriers > 0 || len_excluded_carriers > 0) {
+                allAllowed = false;
+            }
+
+            for (int i = 0; i < len_allowed_carriers; i++) {
+                String mcc = p.readString();
+                String mnc = p.readString();
+                int matchType = p.readInt();
+                String matchData = p.readString();
+
+
+                carrierInfo.allowedCarriers.add(new Carrier());
+
+                carrierInfo.allowedCarriers.get(i).mcc = STRING_NULL_HANDLED(mcc);
+                carrierInfo.allowedCarriers.get(i).mnc = STRING_NULL_HANDLED(mnc);
+                carrierInfo.allowedCarriers.get(i).matchType = matchType;
+                carrierInfo.allowedCarriers.get(i).matchData = STRING_NULL_HANDLED(matchData);
+            }
+
+            for (int i = 0; i < len_excluded_carriers; i++) {
+                String mcc = p.readString();
+                String mnc = p.readString();
+                int matchType = p.readInt();
+                String matchData = p.readString();
+
+                carrierInfo.excludedCarriers.add(new Carrier());
+
+                carrierInfo.excludedCarriers.get(i).mcc = STRING_NULL_HANDLED(mcc);
+                carrierInfo.excludedCarriers.get(i).mnc = STRING_NULL_HANDLED(mnc);
+                carrierInfo.excludedCarriers.get(i).matchType = matchType;
+                carrierInfo.excludedCarriers.get(i).matchData = STRING_NULL_HANDLED(matchData);
+            }
+        }
+
+        radioResponse.getAllowedCarriersResponse(responseInfo, allAllowed, carrierInfo);
+    }
+
     private IccIoResult readIccIoResult(Parcel p) {
 
         IccIoResult iccIoResult = new IccIoResult();
@@ -1734,7 +1784,7 @@ public class RildService extends BroadcastReceiver {
 //                case RIL_REQUEST_PULL_LCEDATA: ret = responseLceData(p); break;
                 case RIL_REQUEST_GET_ACTIVITY_INFO: radioResponse.getModemActivityInfoResponse(responseInfo, readActivityStatsInfo(p)); break;
 //                case RIL_REQUEST_SET_ALLOWED_CARRIERS: ret = responseInts(p); break;
-//                case RIL_REQUEST_GET_ALLOWED_CARRIERS: ret = responseCarrierIdentifiers(p); break;
+                case RIL_REQUEST_GET_ALLOWED_CARRIERS: handleGetAllowedCarriersResponse(radioResponse, responseInfo, p); break;
 
                 default:
                     Rlog.w(TAG, "processSolicited: unkown request code: " + requestToString(code) + ", for serial: " + serial);
@@ -3439,7 +3489,13 @@ public class RildService extends BroadcastReceiver {
         public void getAllowedCarriers(int serial)
                 throws android.os.RemoteException {
 
-            Rlog.e(TAG, "getAllowedCarriers called!");
+            Rlog.d(TAG, "getAllowedCarriers called!");
+
+            int code = RIL_REQUEST_GET_ALLOWED_CARRIERS;
+
+            Parcel p = getRequest(code, serial);
+
+            send(serial, code, p);
         }
 
         private RadioResponseInfo createRadioResponseInfo(int serial, int error)
